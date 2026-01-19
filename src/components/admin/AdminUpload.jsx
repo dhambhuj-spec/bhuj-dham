@@ -9,6 +9,7 @@ export default function AdminUpload() {
   const [uploadMode, setUploadMode] = useState('file')
   const [mediaType, setMediaType] = useState('photo')
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
@@ -68,10 +69,106 @@ export default function AdminUpload() {
     setFormData({ ...formData, tags: formData.tags.filter(t => t !== tag) })
   }
 
+  // Auto-detect YouTube links
+  const handleUrlChange = (e) => {
+    const url = e.target.value
+    setFormData({ ...formData, externalUrl: url })
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      setMediaType('video')
+    }
+  }
+
+  const uploadFileWithProgress = async (file) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('No active session')
+
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        const bucket = 'media'
+
+        const xhr = new XMLHttpRequest()
+        const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${bucket}/${fileName}`
+
+        xhr.open('POST', url)
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+        xhr.setRequestHeader('apikey', import.meta.env.VITE_SUPABASE_ANON_KEY)
+        // xhr.setRequestHeader('Content-Type', file.type) // Let browser set boundary for FormData
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100)
+            setProgress(percent)
+          }
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const { Key } = JSON.parse(xhr.responseText)
+            // The Key returned is usually "bucket/path" or separate. 
+            // For standard Supabase storage, creating correct paths manually is safer.
+            // But let's verify what Supabase returns. standard upload returns { Key: "media/filename..." }
+            const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${bucket}/${fileName}`
+            resolve({ path: fileName, url: publicUrl })
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`))
+          }
+        }
+
+        xhr.onerror = () => reject(new Error('Network error during upload'))
+
+        // We use FormData to ensure correct handling
+        const formData = new FormData()
+        formData.append('file', file)
+        // Standard Supabase endpoint handles raw body or formData. 
+        // Using FormData is safer for browser compatibility with progress.
+        // Actually, Supabase docs say for standard upload, simply POST the body if not using multipart.
+        // But let's try sending file directly as body and setting Content-Type
+        // xhr.send(file) 
+
+        // Wait, best pattern for Supabase storage API via XHR:
+        // POST /object/bucket/filename
+        // Body: Raw file content
+        // Headers: Content-Type: file.type, Authorization, apikey, x-upsert: false
+
+        // Re-opening to set header
+        const xhr2 = new XMLHttpRequest()
+        xhr2.open('POST', url)
+        xhr2.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+        xhr2.setRequestHeader('apikey', import.meta.env.VITE_SUPABASE_ANON_KEY)
+        xhr2.setRequestHeader('Content-Type', file.type)
+        xhr2.setRequestHeader('x-upsert', 'false')
+
+        xhr2.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.round((e.loaded / e.total) * 90)) // Go to 90%, then wait for DB
+          }
+        }
+
+        xhr2.onload = () => {
+          if (xhr2.status >= 200 && xhr2.status < 300) {
+            const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${bucket}/${fileName}`
+            resolve({ path: fileName, url: publicUrl })
+          } else {
+            reject(new Error(`Upload failed: ${xhr2.statusText}`))
+          }
+        }
+
+        xhr2.onerror = () => reject(new Error('Network error'))
+        xhr2.send(file)
+
+      } catch (err) {
+        reject(err)
+      }
+    })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess(false)
+    setProgress(0)
 
     if (!formData.title.trim()) {
       setError('Title is required')
@@ -89,12 +186,21 @@ export default function AdminUpload() {
     }
 
     setLoading(true)
+    let timeoutId
 
     try {
+      // Safety timeout in case Supabase hangs
+      timeoutId = setTimeout(() => {
+        setError('Upload timed out. Please check your connection.')
+        setLoading(false)
+      }, 15000)
+
       let storage_url = null
       let storage_path = null
       let external_url = null
       let thumbnail_url = null
+      // Use manually selected type for links, or auto-detected for files
+      let finalMediaType = mediaType
 
       if (uploadMode === 'file' && formData.files.length) {
         const common = {
@@ -108,10 +214,63 @@ export default function AdminUpload() {
         }
 
         const uploads = []
+        // Track progress for each file independenty
+        const fileProgress = new Array(formData.files.length).fill(0)
 
-        for (const file of formData.files) {
+        const updateOverallProgress = () => {
+          const totalProgress = fileProgress.reduce((acc, curr) => acc + curr, 0)
+          const averageProgress = Math.round(totalProgress / formData.files.length)
+          // Scale to 95% max until DB insert is done
+          setProgress(Math.round(averageProgress * 0.95))
+        }
+
+        // Upload in parallel
+        await Promise.all(formData.files.map(async (file, index) => {
           const detectedType = file.type.startsWith('image') ? 'photo' : 'video'
-          const { path, url } = await uploadMediaFile(file, detectedType === 'photo' ? 'photos' : 'videos')
+
+          // Custom wrapper to track individual file progress
+          const { path, url } = await new Promise(async (resolve, reject) => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession()
+              if (!session?.access_token) throw new Error('No active session')
+
+              const fileExt = file.name.split('.').pop()
+              const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+              const bucket = 'media'
+
+              const xhr = new XMLHttpRequest()
+              const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${bucket}/${fileName}`
+
+              xhr.open('POST', url)
+              xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+              xhr.setRequestHeader('apikey', import.meta.env.VITE_SUPABASE_ANON_KEY)
+              xhr.setRequestHeader('Content-Type', file.type)
+              xhr.setRequestHeader('x-upsert', 'false')
+
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                  const percent = Math.round((e.loaded / e.total) * 100)
+                  fileProgress[index] = percent
+                  updateOverallProgress()
+                }
+              }
+
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${bucket}/${fileName}`
+                  resolve({ path: fileName, url: publicUrl })
+                } else {
+                  reject(new Error(`Upload failed: ${xhr.statusText}`))
+                }
+              }
+
+              xhr.onerror = () => reject(new Error('Network error'))
+              xhr.send(file)
+            } catch (err) {
+              reject(err)
+            }
+          })
+
           uploads.push({
             title: formData.title.trim() || file.name,
             type: detectedType,
@@ -121,30 +280,32 @@ export default function AdminUpload() {
             thumbnail_url: detectedType === 'video' ? url : null,
             ...common
           })
-        }
+        }))
 
-        const { data, error: dbError } = await supabase
+        const { error: dbError } = await supabase
           .from('media')
           .insert(uploads)
-          .select()
 
         if (dbError) throw dbError
       } else {
         external_url = formData.externalUrl
+
+        // Logic for YouTube
         if (external_url.includes('youtube.com') || external_url.includes('youtu.be')) {
+          finalMediaType = 'video' // Enforce video type
           const videoId = external_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1]
           if (videoId) {
             thumbnail_url = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
           }
         }
 
-        const { data, error: dbError } = await supabase
+        const { error: dbError } = await supabase
           .from('media')
           .insert([
             {
               title: formData.title.trim(),
               description: formData.description.trim() || null,
-              type: mediaType,
+              type: finalMediaType,
               storage_path,
               storage_url,
               external_url,
@@ -157,11 +318,11 @@ export default function AdminUpload() {
               photographer: 'Admin'
             }
           ])
-          .select()
 
         if (dbError) throw dbError
       }
 
+      setProgress(100)
       setSuccess(true)
       setTimeout(() => {
         navigate('/admin/manage')
@@ -170,6 +331,7 @@ export default function AdminUpload() {
       console.error('Error uploading media:', err)
       setError(err.message || 'Failed to upload media. Please try again.')
     } finally {
+      if (timeoutId) clearTimeout(timeoutId)
       setLoading(false)
     }
   }
@@ -224,11 +386,10 @@ export default function AdminUpload() {
               <button
                 type="button"
                 onClick={() => setUploadMode('file')}
-                className={`flex items-center justify-center space-x-3 p-4 rounded-xl transition-all transform hover:scale-105 ${
-                  uploadMode === 'file'
-                    ? 'bg-gradient-to-br from-gold to-dark-gold text-white shadow-lg'
-                    : 'bg-white/50 text-dark-brown border-2 border-transparent hover:border-gold/30'
-                }`}
+                className={`flex items-center justify-center space-x-3 p-4 rounded-xl transition-all transform hover:scale-105 ${uploadMode === 'file'
+                  ? 'bg-gradient-to-br from-gold to-dark-gold text-white shadow-lg'
+                  : 'bg-white/50 text-dark-brown border-2 border-transparent hover:border-gold/30'
+                  }`}
               >
                 <Upload size={22} />
                 <span className="font-semibold">Upload File</span>
@@ -236,11 +397,10 @@ export default function AdminUpload() {
               <button
                 type="button"
                 onClick={() => setUploadMode('link')}
-                className={`flex items-center justify-center space-x-3 p-4 rounded-xl transition-all transform hover:scale-105 ${
-                  uploadMode === 'link'
-                    ? 'bg-gradient-to-br from-gold to-dark-gold text-white shadow-lg'
-                    : 'bg-white/50 text-dark-brown border-2 border-transparent hover:border-gold/30'
-                }`}
+                className={`flex items-center justify-center space-x-3 p-4 rounded-xl transition-all transform hover:scale-105 ${uploadMode === 'link'
+                  ? 'bg-gradient-to-br from-gold to-dark-gold text-white shadow-lg'
+                  : 'bg-white/50 text-dark-brown border-2 border-transparent hover:border-gold/30'
+                  }`}
               >
                 <LinkIcon size={22} />
                 <span className="font-semibold">Use Link</span>
@@ -253,11 +413,10 @@ export default function AdminUpload() {
             <h2 className="text-lg font-semibold text-dark-brown mb-2">Media Type</h2>
             <p className="text-sm text-dark-brown/70 mb-4">For file uploads the type is auto-detected per file. This setting applies to external links.</p>
             <div className="grid grid-cols-2 gap-4">
-              <label className={`flex items-center space-x-3 p-4 rounded-xl cursor-pointer transition-all ${
-                mediaType === 'photo'
-                  ? 'bg-gold/10 border-2 border-gold'
-                  : 'bg-white/50 border-2 border-transparent hover:border-gold/30'
-              }`}>
+              <label className={`flex items-center space-x-3 p-4 rounded-xl cursor-pointer transition-all ${mediaType === 'photo'
+                ? 'bg-gold/10 border-2 border-gold'
+                : 'bg-white/50 border-2 border-transparent hover:border-gold/30'
+                }`}>
                 <input
                   type="radio"
                   name="type"
@@ -269,11 +428,10 @@ export default function AdminUpload() {
                 <Image size={20} className="text-dark-brown" />
                 <span className="font-medium text-dark-brown">Photo</span>
               </label>
-              <label className={`flex items-center space-x-3 p-4 rounded-xl cursor-pointer transition-all ${
-                mediaType === 'video'
-                  ? 'bg-gold/10 border-2 border-gold'
-                  : 'bg-white/50 border-2 border-transparent hover:border-gold/30'
-              }`}>
+              <label className={`flex items-center space-x-3 p-4 rounded-xl cursor-pointer transition-all ${mediaType === 'video'
+                ? 'bg-gold/10 border-2 border-gold'
+                : 'bg-white/50 border-2 border-transparent hover:border-gold/30'
+                }`}>
                 <input
                   type="radio"
                   name="type"
@@ -337,7 +495,7 @@ export default function AdminUpload() {
               <input
                 type="url"
                 value={formData.externalUrl}
-                onChange={(e) => setFormData({ ...formData, externalUrl: e.target.value })}
+                onChange={handleUrlChange}
                 placeholder="https://youtube.com/watch?v=... or paste Drive link"
                 className="w-full px-4 py-3 bg-white/50 border border-gold/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent"
               />
@@ -347,7 +505,7 @@ export default function AdminUpload() {
           {/* Basic Info */}
           <div className="glass p-6 rounded-2xl space-y-4">
             <h2 className="text-lg font-semibold text-dark-brown mb-4">Basic Information</h2>
-            
+
             <div>
               <label className="block text-sm font-semibold text-dark-brown mb-2">Title *</label>
               <input
@@ -406,7 +564,7 @@ export default function AdminUpload() {
               <Tag size={20} />
               <span>Tags</span>
             </h2>
-            
+
             <div className="flex flex-wrap gap-2 mb-4">
               {formData.tags.map((tag) => (
                 <motion.div
@@ -434,11 +592,10 @@ export default function AdminUpload() {
                   type="button"
                   onClick={() => handleTagAdd(tag)}
                   disabled={formData.tags.includes(tag)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    formData.tags.includes(tag)
-                      ? 'bg-gold/30 text-dark-brown opacity-50 cursor-not-allowed'
-                      : 'bg-white/50 text-dark-brown hover:bg-white/70 border border-gold/20 hover:border-gold/50'
-                  }`}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${formData.tags.includes(tag)
+                    ? 'bg-gold/30 text-dark-brown opacity-50 cursor-not-allowed'
+                    : 'bg-white/50 text-dark-brown hover:bg-white/70 border border-gold/20 hover:border-gold/50'
+                    }`}
                 >
                   + {tag}
                 </button>
@@ -449,7 +606,7 @@ export default function AdminUpload() {
           {/* Status & Featured */}
           <div className="glass p-6 rounded-2xl">
             <h2 className="text-lg font-semibold text-dark-brown mb-4">Publishing Options</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-dark-brown mb-2">Status</label>
@@ -476,28 +633,40 @@ export default function AdminUpload() {
           </div>
 
           {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading || success}
-            className="w-full py-4 bg-gradient-to-r from-gold to-dark-gold text-white rounded-xl font-bold text-lg hover:shadow-lg transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
-          >
-            {loading ? (
-              <>
-                <Loader size={20} className="animate-spin" />
-                <span>Uploading...</span>
-              </>
-            ) : success ? (
-              <>
-                <CheckCircle size={20} />
-                <span>Uploaded Successfully!</span>
-              </>
-            ) : (
-              <>
-                <Save size={20} />
-                <span>Upload Media</span>
-              </>
+          <div className="space-y-4">
+            {loading && progress > 0 && (
+              <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-gold h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                ></div>
+                <p className="text-xs text-center mt-1 text-dark-brown/70">{progress}% Uploaded</p>
+              </div>
             )}
-          </button>
+
+            <button
+              type="submit"
+              disabled={loading || success}
+              className="w-full py-4 bg-gradient-to-r from-gold to-dark-gold text-white rounded-xl font-bold text-lg hover:shadow-lg transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
+            >
+              {loading ? (
+                <>
+                  <Loader size={20} className="animate-spin" />
+                  <span>Uploading...</span>
+                </>
+              ) : success ? (
+                <>
+                  <CheckCircle size={20} />
+                  <span>Uploaded Successfully!</span>
+                </>
+              ) : (
+                <>
+                  <Save size={20} />
+                  <span>Upload Media</span>
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

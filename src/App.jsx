@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import Home from './pages/Home'
 import Gallery from './pages/Gallery'
@@ -7,10 +7,13 @@ import Admin from './pages/Admin'
 import { AuthProvider } from './context/AuthContext'
 
 function App() {
+  const location = useLocation()
+  const isAdminRoute = location.pathname.startsWith('/admin')
+
   return (
     <AuthProvider>
       <div className="min-h-screen">
-        <Navigation />
+        {!isAdminRoute && <Navigation />}
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/gallery" element={<Gallery />} />
@@ -18,7 +21,7 @@ function App() {
           <Route path="/admin/*" element={<Admin />} />
         </Routes>
       </div>
-    </AuthProvider>  )
+    </AuthProvider>)
 }
 
 export default App

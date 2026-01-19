@@ -61,12 +61,67 @@ export default function MasonryGallery({ layout, filters }) {
   return (
     <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${layout === 'masonry' ? 'auto-rows-[250px]' : ''}`}>
       {galleryData.map((item, index) => {
-        const mediaUrl = item.type === 'video' ? (item.thumbnail_url || item.external_url) : (item.storage_url || item.external_url)
+        // Correctly resolve mediaUrl by ignoring empty strings
+        const mediaUrl = [item.storage_url, item.external_url, item.thumbnail_url].find(url => url && url.length > 0) || ''
+        const isYouTube = item.type === 'video' && (mediaUrl.includes('youtube.com') || mediaUrl.includes('youtu.be'))
+
+        // Robust regex for YouTube ID extraction (supports Shorts, Embeds, Watch URLs)
+        let videoId = null
+        if (isYouTube) {
+          const match = mediaUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)
+          videoId = match ? match[1] : null
+        }
+
+        // Determine the best display URL (thumbnail for videos, source for images)
+        let displayUrl = mediaUrl
+        if (item.type === 'video') {
+          if (item.thumbnail_url) {
+            displayUrl = item.thumbnail_url
+          } else if (isYouTube && videoId) {
+            displayUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+          }
+        }
+
         return (
           <motion.div key={item.id} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, 0.5) }} className={`${getColumnSpan(index)} group relative rounded-2xl overflow-hidden cursor-pointer`} onMouseEnter={() => setHoveredId(item.id)} onMouseLeave={() => setHoveredId(null)}>
             <Link to={`/media/${item.id}`} className="block h-full">
-              <img src={mediaUrl} alt={item.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              {item.type === 'video' && <div className="absolute top-4 right-4 p-3 bg-dark-brown/80 backdrop-blur-sm rounded-full"><Play size={20} className="text-white fill-white" /></div>}
+              {item.type === 'video' && isYouTube && videoId ? (
+                <div className="w-full h-full pointer-events-none">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1`}
+                    title={item.title}
+                    className="w-full h-full object-cover"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                </div>
+              ) : item.type === 'video' && !isYouTube ? (
+                <video
+                  src={mediaUrl}
+                  poster={item.thumbnail_url}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  muted
+                  loop
+                  playsInline
+                  onMouseEnter={(e) => e.target.play()}
+                  onMouseLeave={(e) => {
+                    e.target.pause()
+                    e.target.currentTime = 0
+                  }}
+                />
+              ) : (
+                <img
+                  src={displayUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  onError={(e) => {
+                    if (e.target.src.includes('maxresdefault')) {
+                      e.target.src = e.target.src.replace('maxresdefault', 'hqdefault')
+                    }
+                  }}
+                />
+              )}
+              {item.type === 'video' && <div className="absolute top-4 right-4 p-3 bg-dark-brown/80 backdrop-blur-sm rounded-full pointer-events-none"><Play size={20} className="text-white fill-white" /></div>}
               <div className={`absolute inset-0 bg-gradient-to-t from-dark-brown/90 via-dark-brown/40 to-transparent transition-opacity duration-300 ${hoveredId === item.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
               <div className={`absolute bottom-0 left-0 right-0 p-6 transition-transform duration-300 ${hoveredId === item.id ? 'translate-y-0' : 'translate-y-2 group-hover:translate-y-0'}`}>
                 <div className="flex flex-wrap gap-2 mb-3">

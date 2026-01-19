@@ -13,9 +13,10 @@ export default function FeaturedCarousel() {
 
   // Use featured media if available, otherwise use recent media (limit to 10)
   const displayMedia = (featuredMedia && featuredMedia.length > 0 ? featuredMedia : recentMedia || []).slice(0, 10)
-  // Show loader until both queries have finished
-  const loading = featuredLoading || recentLoading
-  
+
+  // Optimize loading: Only wait for recent media if we don't have featured media
+  const loading = featuredLoading || (!featuredMedia?.length && recentLoading)
+
   // Debug logging
   useEffect(() => {
     console.log('Featured Media:', featuredMedia)
@@ -104,13 +105,25 @@ export default function FeaturedCarousel() {
             }}
             className="absolute inset-0"
           >
-            {/* Image */}
-            <img
-              src={mediaUrl}
-              alt={currentMedia.title}
-              loading="eager"
-              className="w-full h-full object-cover"
-            />
+            {/* Media Content */}
+            {currentMedia.type === 'video' ? (
+              <video
+                src={mediaUrl}
+                poster={currentMedia.thumbnail_url}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <img
+                src={mediaUrl}
+                alt={currentMedia.title}
+                loading="eager"
+                className="w-full h-full object-cover"
+              />
+            )}
 
             {/* Gradient Overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-dark-brown/90 via-dark-brown/50 to-transparent" />
@@ -183,17 +196,24 @@ export default function FeaturedCarousel() {
               setDirection(index > currentIndex ? 1 : -1)
               setCurrentIndex(index)
             }}
-            className={`relative w-20 h-20 rounded-xl overflow-hidden transition-all ${
-              index === currentIndex
-                ? 'ring-4 ring-gold scale-110'
-                : 'opacity-60 hover:opacity-100'
-            }`}
+            className={`relative w-20 h-20 rounded-xl overflow-hidden transition-all ${index === currentIndex
+              ? 'ring-4 ring-gold scale-110'
+              : 'opacity-60 hover:opacity-100'
+              }`}
           >
-            <img
-              src={media.storage_url || media.external_url || media.thumbnail_url}
-              alt={media.title}
-              className="w-full h-full object-cover"
-            />
+            {media.type === 'video' ? (
+              <video
+                src={media.storage_url || media.external_url}
+                className="w-full h-full object-cover pointer-events-none"
+                muted
+              />
+            ) : (
+              <img
+                src={media.storage_url || media.external_url || media.thumbnail_url}
+                alt={media.title}
+                className="w-full h-full object-cover"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -207,11 +227,10 @@ export default function FeaturedCarousel() {
               setDirection(index > currentIndex ? 1 : -1)
               setCurrentIndex(index)
             }}
-            className={`h-1 rounded-full transition-all ${
-              index === currentIndex
-                ? 'w-8 bg-gold'
-                : 'w-4 bg-gold/30 hover:bg-gold/50'
-            }`}
+            className={`h-1 rounded-full transition-all ${index === currentIndex
+              ? 'w-8 bg-gold'
+              : 'w-4 bg-gold/30 hover:bg-gold/50'
+              }`}
           />
         ))}
       </div>

@@ -9,62 +9,73 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    // Check if user is logged in
-    const checkAuth = async () => {
+    let mounted = true
+
+    const fetchProfile = async (sessionUser) => {
       try {
-        const { data } = await supabase.auth.getSession()
-        if (data.session?.user) {
-          // Get user profile from our users table
-          const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', data.session.user.id)
-            .single()
-          
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', sessionUser.id)
+          .single()
+
+        if (mounted) {
           setUser({
-            id: data.session.user.id,
-            email: data.session.user.email,
+            id: sessionUser.id,
+            email: sessionUser.email,
             ...profile
           })
         }
       } catch (err) {
-        if (err?.name === 'AbortError') return
-        console.error('Error checking auth:', err)
+        console.error('Error fetching profile:', err)
+        // Set user even if profile fetch fails, to avoid "logout" state
+        if (mounted) {
+          setUser({
+            id: sessionUser.id,
+            email: sessionUser.email
+          })
+        }
       } finally {
-        setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
 
-    checkAuth()
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchProfile(session.user)
+      } else {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    })
 
-    // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (session?.user) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-          
-          setUser({
-            id: session.user.id,
-            email: session.user.email,
-            ...profile
-          })
+          // Only fetch if we don't have the user pending
+          // Actually on refresh, this might fire.
+          fetchProfile(session.user)
         } else {
-          setUser(null)
+          if (mounted) {
+            setUser(null)
+            setLoading(false)
+          }
         }
       }
     )
 
-    return () => subscription?.unsubscribe()
+    return () => {
+      mounted = false
+      subscription?.unsubscribe()
+    }
   }, [])
 
   const register = useCallback(async (email, password, username, phone) => {
     try {
       setError('')
-      
+
       // Sign up user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
@@ -126,7 +137,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     try {
       setError('')
-      
+
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -155,7 +166,7 @@ export function AuthProvider({ children }) {
             }, { onConflict: 'id' })
             .select()
             .single()
-          
+
           userRole = 'admin'
         }
 
@@ -179,7 +190,7 @@ export function AuthProvider({ children }) {
           } catch (insertErr) {
             console.error('Failed to create admin profile:', insertErr)
           }
-          
+
           setUser({
             id: data.user.id,
             email: data.user.email,

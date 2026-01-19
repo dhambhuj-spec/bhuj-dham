@@ -36,7 +36,7 @@ export default function MediaDetail() {
 
     try {
       setIsLiked(!isLiked)
-      
+
       if (!isLiked) {
         setLikeCount(prev => prev + 1)
       } else {
@@ -67,7 +67,7 @@ export default function MediaDetail() {
 
     try {
       const mediaUrl = media.type === 'video' ? media.external_url : (media.storage_url || media.external_url)
-      
+
       if (!mediaUrl) {
         alert('Media URL not available')
         return
@@ -137,7 +137,8 @@ export default function MediaDetail() {
     )
   }
 
-  const mediaUrl = media.type === 'video' ? (media.thumbnail_url || media.external_url) : (media.storage_url || media.external_url)
+  const mediaSource = media.storage_url || media.external_url
+  const posterUrl = media.thumbnail_url
 
   return (
     <motion.div
@@ -158,25 +159,24 @@ export default function MediaDetail() {
                 <X size={24} />
                 <span className="hidden sm:inline font-medium">Close</span>
               </button>
-              
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleLike}
-                  className={`p-2.5 rounded-lg transition-all shadow-lg ${
-                    isLiked ? 'bg-gold text-white' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
+                  className={`p-2.5 rounded-lg transition-all shadow-lg ${isLiked ? 'bg-gold text-white' : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
                   title={user ? 'Like' : 'Login to like'}
                 >
                   <Heart size={20} className={isLiked ? 'fill-white' : ''} />
                 </button>
-                <button 
+                <button
                   onClick={handleShare}
                   className="p-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all shadow-lg"
                   title={user ? 'Share' : 'Login to share'}
                 >
                   <Share2 size={20} />
                 </button>
-                <button 
+                <button
                   onClick={handleDownload}
                   className="p-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all shadow-lg"
                   title={user ? 'Download' : 'Login to download'}
@@ -192,26 +192,51 @@ export default function MediaDetail() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Media Display */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 flex justify-center items-start">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.1 }}
-                className="relative rounded-2xl overflow-hidden gold-glow"
+                className="relative rounded-2xl overflow-hidden gold-glow w-full max-w-6xl mx-auto"
               >
                 {media.type === 'video' ? (
-                  <div className="relative aspect-video bg-black">
-                    <img src={mediaUrl} alt={media.title} className="w-full h-full object-contain" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <button className="w-20 h-20 bg-gold/90 rounded-full flex items-center justify-center hover:bg-gold hover:scale-110 transition-all">
-                        <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                  (() => {
+                    const youtubeMatch = mediaSource?.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)
+                    const videoId = youtubeMatch ? youtubeMatch[1] : null
+
+                    if (videoId) {
+                      return (
+                        <div className="relative aspect-video w-full max-w-6xl bg-black rounded-2xl overflow-hidden">
+                          <iframe
+                            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1`}
+                            title={media.title}
+                            className="w-full h-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                          />
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="relative bg-black flex items-center justify-center rounded-2xl overflow-hidden">
+                        <video
+                          src={mediaSource}
+                          poster={posterUrl}
+                          controls
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          className="max-w-full max-h-[80vh] w-auto h-auto object-contain"
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
+                    )
+                  })()
                 ) : (
-                  <img src={mediaUrl} alt={media.title} className="w-full h-auto" />
+                  <img src={mediaSource} alt={media.title} className="w-full h-auto" />
                 )}
               </motion.div>
             </div>
@@ -264,7 +289,7 @@ export default function MediaDetail() {
                 {/* Details */}
                 <div className="space-y-4 mb-6">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Details</h3>
-                  
+
                   {media.date && (
                     <div className="flex items-start space-x-3 bg-gray-50 p-3 rounded-lg">
                       <Calendar size={20} className="text-gold mt-0.5 flex-shrink-0" />
@@ -276,7 +301,7 @@ export default function MediaDetail() {
                       </div>
                     </div>
                   )}
-                  
+
                   {media.location && (
                     <div className="flex items-start space-x-3 bg-gray-50 p-3 rounded-lg">
                       <MapPin size={20} className="text-gold mt-0.5 flex-shrink-0" />

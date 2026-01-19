@@ -14,10 +14,10 @@ export const useMedia = (filters = {}) => {
     try {
       setLoading(true)
       console.log('useMedia: Fetching with filters:', JSON.stringify(filters))
-      
+
       let query = supabase
         .from('media')
-        .select('*')
+        .select('id, title, description, type, storage_url, external_url, thumbnail_url, date, location, views, is_featured')
         .eq('status', 'published')
         .order('created_at', { ascending: false })
         .limit(filters.featured ? 10 : 50) // Limit initial results
@@ -35,7 +35,7 @@ export const useMedia = (filters = {}) => {
         console.log('useMedia: Applying featured filter')
         query = query.eq('is_featured', true)
       }
-      
+
       // Search filter
       if (filters.search && filters.search.trim()) {
         query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%,location.ilike.%${filters.search}%,photographer.ilike.%${filters.search}%`)
@@ -43,9 +43,9 @@ export const useMedia = (filters = {}) => {
 
       console.log('useMedia: Executing query...')
       const { data, error } = await query
-      
-      console.log('useMedia: Query completed!', { 
-        dataCount: data?.length, 
+
+      console.log('useMedia: Query completed!', {
+        dataCount: data?.length,
         hasError: !!error,
         errorMessage: error?.message,
         firstItem: data?.[0]?.title
@@ -55,7 +55,7 @@ export const useMedia = (filters = {}) => {
         console.error('useMedia: Query error:', error)
         throw error
       }
-      
+
       setMedia(data || [])
       console.log('useMedia: State updated with', data?.length, 'items')
     } catch (err) {
@@ -168,7 +168,7 @@ export const useAdminMedia = () => {
         .eq('id', id)
 
       if (error) throw error
-      
+
       // Update local state
       setMedia(media.filter(item => item.id !== id))
       return true
@@ -188,7 +188,7 @@ export const useAdminMedia = () => {
         .single()
 
       if (error) throw error
-      
+
       // Update local state
       setMedia(media.map(item => item.id === id ? data : item))
       return data
@@ -214,7 +214,7 @@ export const useStats = () => {
     const fetchStats = async () => {
       try {
         setLoading(true)
-        
+
         // Get counts
         const { count: photoCount } = await supabase
           .from('media')
@@ -230,7 +230,7 @@ export const useStats = () => {
         const { data: viewsData } = await supabase
           .from('media')
           .select('views')
-        
+
         const totalViews = viewsData?.reduce((sum, item) => sum + (item.views || 0), 0) || 0
 
         setStats({
