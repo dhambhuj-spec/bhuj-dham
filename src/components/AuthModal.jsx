@@ -1,13 +1,16 @@
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Mail, Lock, User, Phone, AlertCircle, CheckCircle } from 'lucide-react'
 import { AuthContext } from '../context/AuthContext'
 
 export default function AuthModal({ isOpen, onClose }) {
-  const { login, register, error, setError } = useContext(AuthContext)
+  const navigate = useNavigate()
+  const { login, register, error, setError, user } = useContext(AuthContext)
   const [isLogin, setIsLogin] = useState(true)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState('')
+  const [shouldRedirect, setShouldRedirect] = useState(false)
   
   const [formData, setFormData] = useState({
     email: '',
@@ -15,6 +18,19 @@ export default function AuthModal({ isOpen, onClose }) {
     username: '',
     phone: ''
   })
+
+  // Watch for successful login and redirect if admin
+  useEffect(() => {
+    if (shouldRedirect && user) {
+      // Redirect if user role is admin OR if email is admin@bhujdham.com
+      if (user?.role === 'admin' || user?.email === 'admin@bhujdham.com') {
+        navigate('/admin')
+        setShouldRedirect(false)
+      } else {
+        setShouldRedirect(false)
+      }
+    }
+  }, [user, shouldRedirect, navigate])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -35,6 +51,7 @@ export default function AuthModal({ isOpen, onClose }) {
         const result = await login(formData.email, formData.password)
         if (result.success) {
           setSuccess('Login successful!')
+          setShouldRedirect(true)
           setTimeout(() => {
             onClose()
             setFormData({ email: '', password: '', username: '', phone: '' })
@@ -67,15 +84,17 @@ export default function AuthModal({ isOpen, onClose }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 min-h-screen"
           onClick={onClose}
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] overflow-y-auto p-8 shadow-2xl border border-gold/20"
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-6">

@@ -142,17 +142,55 @@ export function AuthProvider({ children }) {
           .eq('id', data.user.id)
           .single()
 
+        // Check if this is the admin email and set role accordingly
+        let userRole = profile?.role
+        if (email === 'admin@bhujdham.com' && !userRole) {
+          // Update or create user with admin role
+          const { data: updatedProfile } = await supabase
+            .from('users')
+            .upsert({
+              id: data.user.id,
+              email: data.user.email,
+              role: 'admin'
+            }, { onConflict: 'id' })
+            .select()
+            .single()
+          
+          userRole = 'admin'
+        }
+
         setUser({
           id: data.user.id,
           email: data.user.email,
+          role: userRole,
           ...(profile || {})
         })
       } catch (profileErr) {
-        // Profile doesn't exist, set minimal user data
-        setUser({
-          id: data.user.id,
-          email: data.user.email
-        })
+        // Profile doesn't exist, create it for admin if needed
+        if (email === 'admin@bhujdham.com') {
+          try {
+            await supabase
+              .from('users')
+              .insert({
+                id: data.user.id,
+                email: data.user.email,
+                role: 'admin'
+              })
+          } catch (insertErr) {
+            console.error('Failed to create admin profile:', insertErr)
+          }
+          
+          setUser({
+            id: data.user.id,
+            email: data.user.email,
+            role: 'admin'
+          })
+        } else {
+          setUser({
+            id: data.user.id,
+            email: data.user.email
+          })
+        }
       }
 
       return { success: true }

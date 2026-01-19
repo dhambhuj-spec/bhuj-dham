@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useContext, useEffect } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import AdminLogin from '../components/admin/AdminLogin'
+import { AuthContext } from '../context/AuthContext'
 import AdminLayout from '../components/admin/AdminLayout'
 import AdminDashboard from '../components/admin/AdminDashboard'
 import AdminUpload from '../components/admin/AdminUpload'
@@ -9,53 +9,8 @@ import AdminManage from '../components/admin/AdminManage'
 import AdminTags from '../components/admin/AdminTags'
 
 export default function Admin() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let subscription
-    const loadingTimeout = setTimeout(() => {
-      // Stop spinner even if auth request hangs
-      setLoading(false)
-    }, 6000)
-
-    const checkSession = async () => {
-      try {
-        if (!isSupabaseConfigured) {
-          setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart the dev server.')
-          setLoading(false)
-          return
-        }
-
-        // Check current session
-        const { data } = await supabase.auth.getSession()
-        setIsAuthenticated(!!data?.session)
-      } catch (err) {
-        if (err?.name !== 'AbortError') {
-          console.error('Admin auth check failed:', err)
-          setError('Unable to reach auth service. Check your Supabase keys and network connection.')
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkSession()
-
-    // Listen for auth changes
-    if (isSupabaseConfigured) {
-      const { data: subData } = supabase.auth.onAuthStateChange((_event, session) => {
-        setIsAuthenticated(!!session)
-      })
-      subscription = subData?.subscription
-    }
-
-    return () => {
-      subscription?.unsubscribe()
-      clearTimeout(loadingTimeout)
-    }
-  }, [])
+  const { user, loading } = useContext(AuthContext)
+  const isAuthenticated = user?.role === 'admin' || user?.email === 'admin@bhujdham.com'
 
   if (loading) {
     return (
@@ -68,19 +23,26 @@ export default function Admin() {
     )
   }
 
-  if (error) {
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cornsilk to-white px-4">
         <div className="max-w-md text-center space-y-4">
-          <p className="text-lg font-semibold text-dark-brown">{error}</p>
-          <p className="text-sm text-dark-brown/70">If you just added environment variables, restart the Vite dev server and reload.</p>
+          <p className="text-lg font-semibold text-dark-brown">Please log in to access the admin panel</p>
+          <p className="text-sm text-dark-brown/70">Use the Login button in the navigation bar</p>
         </div>
       </div>
     )
   }
 
   if (!isAuthenticated) {
-    return <AdminLogin onLogin={() => setIsAuthenticated(true)} />
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cornsilk to-white px-4">
+        <div className="max-w-md text-center space-y-4">
+          <p className="text-lg font-semibold text-dark-brown">Access Denied</p>
+          <p className="text-sm text-dark-brown/70">You don't have admin privileges</p>
+        </div>
+      </div>
+    )
   }
 
   return (
