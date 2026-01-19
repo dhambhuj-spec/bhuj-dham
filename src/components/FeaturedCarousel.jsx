@@ -85,7 +85,12 @@ export default function FeaturedCarousel() {
   }
 
   const currentMedia = displayMedia[currentIndex]
-  const mediaUrl = currentMedia.storage_url || currentMedia.external_url || currentMedia.thumbnail_url
+  // Correctly resolve mediaUrl by ignoring empty strings
+  const mediaUrl = [currentMedia.storage_url, currentMedia.external_url, currentMedia.thumbnail_url].find(url => url && url.length > 0) || ''
+
+  const isYouTube = currentMedia.type === 'video' && (mediaUrl.includes('youtube.com') || mediaUrl.includes('youtu.be'))
+  const youtubeMatch = isYouTube ? mediaUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/) : null
+  const videoId = youtubeMatch ? youtubeMatch[1] : null
 
   return (
     <div className="relative">
@@ -107,15 +112,26 @@ export default function FeaturedCarousel() {
           >
             {/* Media Content */}
             {currentMedia.type === 'video' ? (
-              <video
-                src={mediaUrl}
-                poster={currentMedia.thumbnail_url}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="w-full h-full object-cover"
-              />
+              isYouTube && videoId ? (
+                <div className="w-full h-full pointer-events-none">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1`}
+                    title={currentMedia.title}
+                    className="w-full h-full object-cover"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                </div>
+              ) : (
+                <video
+                  src={mediaUrl}
+                  poster={currentMedia.thumbnail_url}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              )
             ) : (
               <img
                 src={mediaUrl}
@@ -189,33 +205,52 @@ export default function FeaturedCarousel() {
 
       {/* Thumbnail Navigation */}
       <div className="flex justify-center gap-3 mt-6">
-        {displayMedia.map((media, index) => (
-          <button
-            key={media.id}
-            onClick={() => {
-              setDirection(index > currentIndex ? 1 : -1)
-              setCurrentIndex(index)
-            }}
-            className={`relative w-20 h-20 rounded-xl overflow-hidden transition-all ${index === currentIndex
-              ? 'ring-4 ring-gold scale-110'
-              : 'opacity-60 hover:opacity-100'
-              }`}
-          >
-            {media.type === 'video' ? (
-              <video
-                src={media.storage_url || media.external_url}
-                className="w-full h-full object-cover pointer-events-none"
-                muted
-              />
-            ) : (
-              <img
-                src={media.storage_url || media.external_url || media.thumbnail_url}
-                alt={media.title}
-                className="w-full h-full object-cover"
-              />
-            )}
-          </button>
-        ))}
+        {displayMedia.map((media, index) => {
+          const mUrl = [media.storage_url, media.external_url, media.thumbnail_url].find(u => u && u.length > 0) || ''
+          const mIsYouTube = media.type === 'video' && (mUrl.includes('youtube.com') || mUrl.includes('youtu.be'))
+          let mVideoId = null
+          if (mIsYouTube) {
+            const match = mUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)
+            mVideoId = match ? match[1] : null
+          }
+
+          let displayThumb = mUrl
+          if (media.type === 'video') {
+            if (mIsYouTube && mVideoId) {
+              displayThumb = `https://img.youtube.com/vi/${mVideoId}/hqdefault.jpg`
+            } else if (media.thumbnail_url) {
+              displayThumb = media.thumbnail_url
+            }
+          }
+
+          return (
+            <button
+              key={media.id}
+              onClick={() => {
+                setDirection(index > currentIndex ? 1 : -1)
+                setCurrentIndex(index)
+              }}
+              className={`relative w-20 h-20 rounded-xl overflow-hidden transition-all ${index === currentIndex
+                ? 'ring-4 ring-gold scale-110'
+                : 'opacity-60 hover:opacity-100'
+                }`}
+            >
+              {media.type === 'video' && !mIsYouTube ? (
+                <video
+                  src={mUrl}
+                  className="w-full h-full object-cover pointer-events-none"
+                  muted
+                />
+              ) : (
+                <img
+                  src={displayThumb}
+                  alt={media.title}
+                  className="w-full h-full object-cover"
+                />
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* Progress Indicators */}
