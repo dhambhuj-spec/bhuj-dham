@@ -68,7 +68,7 @@ export default function Navigation() {
             {user ? (
               <div className="flex items-center space-x-4">
                 <Link
-                  to={(user.role === 'admin' || user.email === 'admin@bhujdham.com') ? '/admin' : '#'}
+                  to={(user.role === 'admin' || user.email === 'admin@bhujdham2010.com') ? '/admin' : '#'}
                   className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gold/10 text-dark-brown hover:bg-gold/20 transition-colors"
                 >
                   <User size={18} />
@@ -126,7 +126,7 @@ export default function Navigation() {
             <div className="border-t border-gold/20 pt-3 mt-3">
               {user ? (
                 <>
-                  {(user.role === 'admin' || user.email === 'admin@bhujdham.com') && (
+                  {(user.role === 'admin' || user.email === 'admin@bhujdham2010.com') && (
                     <Link
                       to="/admin"
                       onClick={() => setIsOpen(false)}

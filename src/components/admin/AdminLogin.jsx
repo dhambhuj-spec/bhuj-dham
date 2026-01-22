@@ -29,7 +29,7 @@ export default function AdminLogin({ onLogin }) {
         onLogin()
       }
     } catch (err) {
-      setError('Login failed. Try admin@bhujdham.com / password123')
+      setError('Login failed. Try admin@bhujdham2010.com / Admin123')
       setLoading(false)
     }
   }
@@ -72,7 +72,7 @@ export default function AdminLogin({ onLogin }) {
                   value={credentials.email}
                   onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                   className="w-full pl-10 pr-4 py-3 bg-white/50 border border-gold/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent"
-                  placeholder="admin@bhujdham.com"
+                  placeholder="admin@bhujdham2010.com"
                   required
                 />
               </div>
@@ -112,7 +112,7 @@ export default function AdminLogin({ onLogin }) {
           </div>
 
           <div className="mt-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg text-xs">
-            <strong>Demo credentials:</strong> admin@bhujdham.com / password123
+            <strong>Demo credentials:</strong> admin@bhujdham2010.com / Admin123
           </div>
         </form>
 

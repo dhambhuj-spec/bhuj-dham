@@ -155,7 +155,7 @@ export function AuthProvider({ children }) {
 
         // Check if this is the admin email and set role accordingly
         let userRole = profile?.role
-        if (email === 'admin@bhujdham.com' && !userRole) {
+        if (email === 'admin@bhujdham2010.com' && !userRole) {
           // Update or create user with admin role
           const { data: updatedProfile } = await supabase
             .from('users')
@@ -178,7 +178,7 @@ export function AuthProvider({ children }) {
         })
       } catch (profileErr) {
         // Profile doesn't exist, create it for admin if needed
-        if (email === 'admin@bhujdham.com') {
+        if (email === 'admin@bhujdham2010.com') {
           try {
             await supabase
               .from('users')

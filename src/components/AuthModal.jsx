@@ -22,8 +22,8 @@ export default function AuthModal({ isOpen, onClose }) {
   // Watch for successful login and redirect if admin
   useEffect(() => {
     if (shouldRedirect && user) {
-      // Redirect if user role is admin OR if email is admin@bhujdham.com
-      if (user?.role === 'admin' || user?.email === 'admin@bhujdham.com') {
+      // Redirect if user role is admin OR if email is admin@bhujdham2010.com
+      if (user?.role === 'admin' || user?.email === 'admin@bhujdham2010.com') {
         navigate('/admin')
         setShouldRedirect(false)
       } else {

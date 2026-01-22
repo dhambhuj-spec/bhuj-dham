@@ -10,7 +10,7 @@ import AdminTags from '../components/admin/AdminTags'
 
 export default function Admin() {
   const { user, loading } = useContext(AuthContext)
-  const isAuthenticated = user?.role === 'admin' || user?.email === 'admin@bhujdham.com'
+  const isAuthenticated = user?.role === 'admin' || user?.email === 'admin@bhujdham2010.com'
 
   if (loading) {
     return (
