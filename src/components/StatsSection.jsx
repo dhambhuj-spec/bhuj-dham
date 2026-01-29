@@ -6,7 +6,7 @@ export default function StatsSection() {
   const { stats, loading } = useStats()
 
   const statsData = [
-    { icon: Image, label: 'Divine Photos of Lord Swaminarayan', value: stats.totalPhotos, color: 'text-gold' },
+    { icon: Image, label: 'Swaminarayan Divine Darshan & Events', value: stats.totalPhotos, color: 'text-gold' },
     { icon: Video, label: 'Divine Videos', value: stats.totalVideos, color: 'text-coral' },
     { icon: Calendar, label: 'Total Media', value: stats.totalMedia, color: 'text-maroon' },
     { icon: Eye, label: 'Total Views', value: stats.totalViews.toLocaleString(), color: 'text-dark-gold' },
