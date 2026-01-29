@@ -29,7 +29,7 @@ export default function AdminLogin({ onLogin }) {
         onLogin()
       }
     } catch (err) {
-      setError('Login failed. Try admin@bhujdham2010.com / Admin123')
+      setError('Login failed. Try admin@bhujdham2010.com / 1020@Dham@Admin')
       setLoading(false)
     }
   }
